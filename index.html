@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <title>Submarine Coins</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="game-shell" aria-label="Submarine coin game">
+    <canvas id="game" aria-label="Game canvas"></canvas>
+
+    <div class="hud" aria-live="polite">
+      <div class="coin-icon" aria-hidden="true"></div>
+      <span id="coinCount">x 00</span>
+      <small>COINS</small>
+    </div>
+
+    <div id="overlay" class="overlay hidden">
+      <div class="panel">
+        <h1>GAME OVER</h1>
+        <p>Coins: <strong id="finalScore">0</strong></p>
+        <p class="hint">Press Space / W / ↑ or tap to restart</p>
+      </div>
+    </div>
+
+    <div id="startHint" class="start-hint">Hold Space / W / ↑ or touch the screen to rise</div>
+  </main>
+
+  <script src="game-core.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
