@@ -88,7 +88,7 @@
     state.medkits.length = 0;
     state.terrainCursorY = state.height * 0.78;
     state.terrainTargetY = state.terrainCursorY;
-    state.coinDistance = 180;
+    state.coinDistance = GameCore.coinSpawnDistance(Math.random, true);
     state.hazardDistance = rand(560, 820);
     state.hazardPatternIndex = 0;
     state.medkitDistance = rand(1300, 1900);
@@ -126,9 +126,8 @@
     state.coins.push({ x, y, r: Math.max(11, Math.min(16, state.width * 0.012)), collected: false });
   }
 
-  function safeSpawnY(x, clearance, upperPadding = 85) {
+  function safeSpawnY(x, clearance, minY = 85 + clearance) {
     const floorY = GameCore.terrainYAt(state.terrain, x);
-    const minY = upperPadding + clearance;
     const maxY = Math.max(minY, floorY - clearance);
     return clamp(rand(minY, maxY), minY, state.height - clearance - 30);
   }
@@ -140,7 +139,12 @@
     state.hazardPatternIndex = (state.hazardPatternIndex + 1) % HAZARD_MOTIONS.length;
     const verticalRange = motion === 'vertical' ? clamp(state.height * 0.075, 28, 65) : 0;
     const horizontalRange = motion === 'horizontal' ? clamp(state.width * 0.075, 30, 72) : 0;
-    const baseY = safeSpawnY(x, r + 82 + verticalRange);
+    const clearance = r + 82 + verticalRange;
+    const baseY = safeSpawnY(
+      x,
+      clearance,
+      GameCore.hazardSpawnMinY(state.height, r, verticalRange),
+    );
     state.hazards.push({
       x,
       baseX: x,
@@ -266,7 +270,7 @@
     if (state.coinDistance <= 0) {
       const batch = Math.random() < 0.55 ? 3 : 1;
       for (let i = 0; i < batch; i += 1) spawnCoin(state.width + 80 + i * 55);
-      state.coinDistance = rand(210, 380);
+      state.coinDistance = GameCore.coinSpawnDistance(Math.random);
     }
 
     state.hazardDistance -= dx;
@@ -353,9 +357,9 @@
     drawLightRays(motionTime);
 
     drawSeabedLayer('far', motionTime);
-    drawKelpLayer('far', motionTime);
+    drawDecorationLayer('far', motionTime);
     drawSeabedLayer('mid', motionTime);
-    drawKelpLayer('mid', motionTime);
+    drawDecorationLayer('mid', motionTime);
 
     ctx.globalAlpha = 0.16;
     ctx.fillStyle = '#ffffff';
@@ -369,7 +373,7 @@
     ctx.globalAlpha = 1;
 
     drawSeabedLayer('near', motionTime);
-    drawKelpLayer('near', motionTime);
+    drawDecorationLayer('near', motionTime);
   }
 
   function drawLightRays(motionTime) {
@@ -448,56 +452,198 @@
     ctx.restore();
   }
 
-  function drawKelpLayer(layer, motionTime) {
+  function drawDecorationLayer(layer, motionTime) {
     const palette = {
-      far: { color: '#174e6f', shadow: '#0d3855', width: 2.4, alpha: 0.34 },
-      mid: { color: '#196e71', shadow: '#0d4a57', width: 3.8, alpha: 0.53 },
-      near: { color: '#16745d', shadow: '#0b4c45', width: 5.4, alpha: 0.78 },
+      far: {
+        colors: { kelp: '#2c7a77', coral: '#317d75', seaFan: '#358682', sprig: '#3b8572', bush: '#2e766e' },
+        shadow: '#0b3e59',
+        width: 2.2,
+        alpha: 0.31,
+      },
+      mid: {
+        colors: { kelp: '#1b8a70', coral: '#4f9974', seaFan: '#238d83', sprig: '#5b9870', bush: '#347f6d' },
+        shadow: '#0c4b55',
+        width: 3.2,
+        alpha: 0.52,
+      },
+      near: {
+        colors: { kelp: '#22a06d', coral: '#69a86b', seaFan: '#20a293', sprig: '#79b75e', bush: '#2f9275' },
+        shadow: '#0a4a44',
+        width: 4.6,
+        alpha: 0.79,
+      },
     }[layer];
     const seabedLayer = state.seabedLayers.find((item) => item.layer === layer);
     if (!seabedLayer) return;
 
     ctx.save();
     ctx.globalAlpha = palette.alpha;
-    ctx.lineCap = 'round';
     for (const plant of state.backgroundPlants) {
       if (plant.layer !== layer) continue;
-      drawKelpPlant(plant, palette, seabedLayer, motionTime);
+      drawBackgroundDecoration(plant, palette, seabedLayer, motionTime);
     }
     ctx.restore();
   }
 
-  function drawKelpPlant(plant, palette, seabedLayer, motionTime) {
+  function drawBackgroundDecoration(plant, palette, seabedLayer, motionTime) {
     const scroll = motionTime * state.speed * plant.parallax;
-    const x = ((plant.x - scroll) % state.width + state.width) % state.width;
-    const baseY = GameCore.seabedYAt(seabedLayer, x + scroll);
-    const sway = Math.sin(motionTime * 1.25 + plant.phase);
+    const sway = Math.sin(motionTime * 1.25 + plant.phase) * plant.height * 0.085;
+    const overflow = plant.spread * 0.62 + plant.height * 0.11 + palette.width * 2;
 
-    ctx.save();
-    ctx.translate(x, baseY + 4);
+    for (const position of GameCore.createRepeatingBackgroundPositions(
+      plant.x,
+      scroll,
+      state.width,
+      overflow,
+    )) {
+      const baseY = GameCore.seabedYAt(seabedLayer, position.worldX);
+      ctx.save();
+      ctx.translate(position.x, baseY + 4);
+      ctx.fillStyle = palette.colors[plant.type] || palette.colors.kelp;
+      ctx.strokeStyle = palette.shadow;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      if (plant.type === 'coral') drawBranchingCoral(plant, palette, sway);
+      else if (plant.type === 'seaFan') drawSeaFan(plant, palette, sway);
+      else if (plant.type === 'sprig') drawLeafySprig(plant, palette, sway);
+      else if (plant.type === 'bush') drawBubbleBush(plant, palette, sway);
+      else drawKelpFronds(plant, sway);
+      ctx.restore();
+    }
+  }
+
+  function drawKelpFronds(plant, sway) {
+    const bladeWidth = Math.max(4, plant.spread / (plant.blades * 1.55));
+    for (let blade = 0; blade < plant.blades; blade += 1) {
+      const ratio = plant.blades === 1 ? 0 : blade / (plant.blades - 1) - 0.5;
+      const baseX = ratio * plant.spread * 0.32;
+      const tipX = baseX + ratio * plant.spread * 0.26 + sway;
+      ctx.beginPath();
+      ctx.moveTo(baseX - bladeWidth * 0.46, 0);
+      ctx.bezierCurveTo(
+        baseX - bladeWidth * 0.6 + sway * 0.16,
+        -plant.height * 0.34,
+        tipX - bladeWidth * 0.42,
+        -plant.height * 0.93,
+        tipX,
+        -plant.height,
+      );
+      ctx.bezierCurveTo(
+        tipX + bladeWidth * 0.42,
+        -plant.height * 0.93,
+        baseX + bladeWidth * 0.6 + sway * 0.24,
+        -plant.height * 0.34,
+        baseX + bladeWidth * 0.46,
+        0,
+      );
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  function drawBranchingCoral(plant, palette, sway) {
+    const strokeBranch = (color, width) => {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.quadraticCurveTo(sway * 0.2, -plant.height * 0.4, sway * 0.34, -plant.height * 0.88);
+      ctx.moveTo(sway * 0.04, -plant.height * 0.22);
+      ctx.quadraticCurveTo(-plant.spread * 0.14, -plant.height * 0.5, -plant.spread * 0.46 + sway * 0.35, -plant.height * 0.62);
+      ctx.moveTo(sway * 0.14, -plant.height * 0.37);
+      ctx.quadraticCurveTo(plant.spread * 0.16, -plant.height * 0.57, plant.spread * 0.42 + sway * 0.5, -plant.height * 0.76);
+      ctx.moveTo(sway * 0.22, -plant.height * 0.58);
+      ctx.quadraticCurveTo(-plant.spread * 0.14, -plant.height * 0.72, -plant.spread * 0.34 + sway * 0.55, -plant.height * 0.92);
+      ctx.moveTo(sway * 0.3, -plant.height * 0.7);
+      ctx.quadraticCurveTo(plant.spread * 0.13, -plant.height * 0.83, plant.spread * 0.27 + sway * 0.6, -plant.height);
+      ctx.stroke();
+    };
+
+    strokeBranch(palette.shadow, palette.width + 2);
+    strokeBranch(ctx.fillStyle, palette.width);
+  }
+
+  function drawSeaFan(plant, palette, sway) {
+    const strokeFan = (color, width) => {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      for (let branch = 0; branch < plant.blades; branch += 1) {
+        const ratio = plant.blades === 1 ? 0 : branch / (plant.blades - 1) - 0.5;
+        const tipX = ratio * plant.spread * 0.68 + sway * (0.55 + Math.abs(ratio));
+        const tipY = -plant.height * (0.76 - Math.abs(ratio) * 0.22);
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.quadraticCurveTo(ratio * plant.spread * 0.2 + sway * 0.26, -plant.height * 0.46, tipX, tipY);
+        ctx.stroke();
+      }
+      ctx.beginPath();
+      ctx.moveTo(-plant.spread * 0.42 + sway * 0.36, -plant.height * 0.48);
+      ctx.quadraticCurveTo(sway * 0.42, -plant.height * 0.65, plant.spread * 0.43 + sway * 0.5, -plant.height * 0.54);
+      ctx.stroke();
+    };
+
+    strokeFan(palette.shadow, palette.width + 1.8);
+    strokeFan(ctx.fillStyle, palette.width);
+  }
+
+  function drawLeafySprig(plant, palette, sway) {
     ctx.strokeStyle = palette.shadow;
-    ctx.lineWidth = palette.width + 2;
-    for (let blade = 0; blade < plant.blades; blade += 1) {
-      const ratio = plant.blades === 1 ? 0 : blade / (plant.blades - 1) - 0.5;
-      const baseX = ratio * plant.height * 0.13;
-      const tipX = baseX + ratio * plant.height * 0.24 + sway * plant.height * 0.13;
-      ctx.beginPath();
-      ctx.moveTo(baseX, 0);
-      ctx.quadraticCurveTo(baseX + sway * plant.height * 0.2, -plant.height * 0.52, tipX, -plant.height);
-      ctx.stroke();
-    }
-    ctx.strokeStyle = palette.color;
+    ctx.lineWidth = palette.width + 1.8;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(sway * 0.24, -plant.height * 0.46, sway * 0.48, -plant.height);
+    ctx.stroke();
+    ctx.strokeStyle = ctx.fillStyle;
     ctx.lineWidth = palette.width;
-    for (let blade = 0; blade < plant.blades; blade += 1) {
-      const ratio = plant.blades === 1 ? 0 : blade / (plant.blades - 1) - 0.5;
-      const baseX = ratio * plant.height * 0.13;
-      const tipX = baseX + ratio * plant.height * 0.24 + sway * plant.height * 0.13;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(sway * 0.24, -plant.height * 0.46, sway * 0.48, -plant.height);
+    ctx.stroke();
+
+    const leafWidth = Math.max(4, plant.spread * 0.18);
+    const leafHeight = Math.max(8, plant.height * 0.15);
+    for (let leaf = 0; leaf < plant.blades; leaf += 1) {
+      const side = leaf % 2 === 0 ? -1 : 1;
+      const progress = 0.2 + leaf * 0.15;
+      const x = sway * progress + side * plant.spread * (0.22 + (leaf % 3) * 0.045);
+      const y = -plant.height * progress;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(side * (0.72 - leaf * 0.045));
       ctx.beginPath();
-      ctx.moveTo(baseX, 0);
-      ctx.quadraticCurveTo(baseX + sway * plant.height * 0.2, -plant.height * 0.52, tipX, -plant.height);
-      ctx.stroke();
+      ctx.ellipse(0, 0, leafWidth, leafHeight, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
     }
-    ctx.restore();
+  }
+
+  function drawBubbleBush(plant, palette, sway) {
+    ctx.strokeStyle = palette.shadow;
+    ctx.lineWidth = palette.width + 1.8;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(sway * 0.16, -plant.height * 0.4, -plant.spread * 0.2 + sway * 0.42, -plant.height * 0.74);
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(sway * 0.3, -plant.height * 0.45, plant.spread * 0.22 + sway * 0.58, -plant.height * 0.84);
+    ctx.stroke();
+
+    const clusters = [
+      [-0.23, -0.38, 0.2], [0.04, -0.52, 0.24], [0.28, -0.46, 0.18],
+      [-0.32, -0.66, 0.16], [0.02, -0.75, 0.22], [0.32, -0.75, 0.15],
+      [-0.1, -0.93, 0.14], [0.22, -0.96, 0.13],
+    ];
+    for (const [xRatio, yRatio, size] of clusters) {
+      ctx.beginPath();
+      ctx.arc(
+        xRatio * plant.spread + sway * (0.45 + yRatio * -0.18),
+        yRatio * plant.height,
+        Math.max(3, plant.spread * size),
+        0,
+        Math.PI * 2,
+      );
+      ctx.fill();
+    }
   }
 
   function drawTerrain() {

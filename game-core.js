@@ -36,6 +36,14 @@
     return Math.max(0, Math.min(maximum, current + change));
   }
 
+  function hazardSpawnMinY(viewportHeight, radius, verticalRange = 0) {
+    return viewportHeight * 0.3 + radius * 1.2 + verticalRange;
+  }
+
+  function coinSpawnDistance(random = Math.random, initial = false) {
+    return initial ? 360 : 420 + random() * 340;
+  }
+
   function createSeabedLayers(height) {
     return [
       {
@@ -97,20 +105,43 @@
 
   function createBackgroundPlants(width, height, layers = createSeabedLayers(height)) {
     const plants = [];
+    const decorationTypes = ['kelp', 'coral', 'seaFan', 'sprig', 'bush'];
+    const heightScales = [0.85, 0.58, 0.72, 0.66, 0.46];
+    const spreadScales = [0.4, 0.62, 0.78, 0.5, 0.58];
+    const bladeCounts = [5, 4, 6, 5, 5];
 
     for (const config of layers) {
       for (let index = 0; index < 5; index += 1) {
+        const type = decorationTypes[index];
+        const plantHeight = height * (config.heightScale * heightScales[index]);
         plants.push({
           layer: config.layer,
+          type,
           x: width * (0.1 + index * 0.2),
-          height: height * (config.heightScale + (index % 3) * 0.035),
-          blades: 3 + (index % 3),
+          height: plantHeight,
+          spread: plantHeight * spreadScales[index],
+          blades: bladeCounts[index],
           parallax: config.parallax,
           phase: index * 0.92 + config.parallax * 9,
         });
       }
     }
     return plants;
+  }
+
+  function createRepeatingBackgroundPositions(x, scroll, width, overflow = 0) {
+    if (width <= 0) return [];
+
+    const visibleOverflow = Math.max(0, overflow);
+    const firstRepeat = Math.ceil((scroll - x - visibleOverflow) / width);
+    const lastRepeat = Math.floor((scroll - x + width + visibleOverflow) / width);
+    const positions = [];
+
+    for (let repeat = firstRepeat; repeat <= lastRepeat; repeat += 1) {
+      const worldX = x + repeat * width;
+      positions.push({ x: worldX - scroll, worldX });
+    }
+    return positions;
   }
 
   function createBackgroundScene(width, height) {
@@ -130,10 +161,13 @@
     circleHitsTerrain,
     circlesOverlap,
     nextHealth,
+    hazardSpawnMinY,
+    coinSpawnDistance,
     createSeabedLayers,
     seabedYAt,
     createSeabedSurfacePoints,
     createBackgroundPlants,
+    createRepeatingBackgroundPositions,
     createBackgroundScene,
     motionTime,
   };

@@ -16,6 +16,18 @@ assert.equal(core.nextHealth(1, -3), 0);
 assert.equal(core.nextHealth(2, 5), 3);
 assert.equal(core.nextHealth(0, 1, 5), 1);
 
+// A vertically moving monster must keep its full body below the upper 30% of
+// the viewport; otherwise hazards can appear too high in the water column.
+const hazardMinY = core.hazardSpawnMinY(600, 50, 45);
+assert.equal(hazardMinY, 285);
+assert.ok(hazardMinY - 45 - 50 * 1.2 >= 180);
+
+// Doubling the distance between batches halves the number of coins encountered
+// over the same stretch of the level without changing the batch composition.
+assert.equal(core.coinSpawnDistance(() => 0, true), 360);
+assert.equal(core.coinSpawnDistance(() => 0), 420);
+assert.equal(core.coinSpawnDistance(() => 1), 760);
+
 // Removing the elevation, opacity, or speed progression would flatten the
 // decorative seabed instead of making it read as a receding 3D space.
 const seabedLayers = core.createSeabedLayers(600);
@@ -73,6 +85,55 @@ assert.equal(plants[0].parallax, seabedLayers[0].parallax);
 assert.equal(plants[5].parallax, seabedLayers[1].parallax);
 assert.equal(plants[10].parallax, seabedLayers[2].parallax);
 assert.ok(plants.every((plant) => plant.height > 0 && plant.blades >= 3));
+
+// Kelp should take a little less space in the playfield while the other
+// underwater decoration keeps its established scale.
+const kelpPlants = plants.filter((plant) => plant.type === 'kelp');
+assert.deepEqual(
+  kelpPlants.map((plant) => ({
+    height: Math.round(plant.height * 10),
+    spread: Math.round(plant.spread * 10),
+  })),
+  [
+    { height: 1224, spread: 490 },
+    { height: 1734, spread: 694 },
+    { height: 2346, spread: 938 },
+  ],
+);
+assert.equal(plants.find((plant) => plant.type === 'coral').height, 83.52);
+
+// Every depth layer needs a readable mix of silhouettes. Otherwise the scene
+// regresses to one repeated kelp shape even when its colour or size changes.
+const decorationTypes = ['bush', 'coral', 'kelp', 'seaFan', 'sprig'];
+for (const layerName of ['far', 'mid', 'near']) {
+  const layerDecorations = plants.filter((plant) => plant.layer === layerName);
+  assert.deepEqual(
+    layerDecorations.map((plant) => plant.type).sort(),
+    decorationTypes,
+  );
+}
+assert.ok(plants.every((plant) => plant.spread > 0));
+
+// A wide decoration must keep its outgoing copy until its visual edge leaves
+// the viewport, while its next repeat enters from the opposite edge smoothly.
+assert.deepEqual(
+  core.createRepeatingBackgroundPositions(64, 65, 640, 40),
+  [
+    { x: -1, worldX: 64 },
+    { x: 639, worldX: 704 },
+  ],
+);
+assert.deepEqual(
+  core.createRepeatingBackgroundPositions(64, 105, 640, 40),
+  [{ x: 599, worldX: 704 }],
+);
+assert.deepEqual(
+  core.createRepeatingBackgroundPositions(64, 1345, 640, 40),
+  [
+    { x: -1, worldX: 1344 },
+    { x: 639, worldX: 1984 },
+  ],
+);
 
 assert.equal(core.motionTime(3.25, false), 3.25);
 assert.equal(core.motionTime(3.25, true), 0);
