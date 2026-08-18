@@ -11,4 +11,9 @@ assert.equal(core.circleHitsTerrain({x: 50, y: 155, r: 10}, [{x: 0, y: 160}, {x:
 assert.equal(core.circlesOverlap({x: 0, y: 0, r: 10}, {x: 15, y: 0, r: 6}), true);
 assert.equal(core.circlesOverlap({x: 0, y: 0, r: 10}, {x: 30, y: 0, r: 6}), false);
 
+assert.equal(core.nextHealth(3, -1), 2);
+assert.equal(core.nextHealth(1, -3), 0);
+assert.equal(core.nextHealth(2, 5), 3);
+assert.equal(core.nextHealth(0, 1, 5), 1);
+
 console.log('game-core tests passed');

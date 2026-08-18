@@ -11,16 +11,25 @@
     <canvas id="game" aria-label="Game canvas"></canvas>
 
     <div class="hud" aria-live="polite">
-      <div class="coin-icon" aria-hidden="true"></div>
-      <span id="coinCount">x 00</span>
-      <small>COINS</small>
+      <section class="hud-card score-card" aria-label="Coins collected">
+        <div class="coin-icon" aria-hidden="true"></div>
+        <div>
+          <span id="coinCount">00</span>
+          <small>COINS</small>
+        </div>
+      </section>
+      <section class="hud-card lives-card" aria-label="Lives remaining">
+        <small>HULL INTEGRITY</small>
+        <div id="lives" class="lives" role="img" aria-label="3 of 3 lives remaining"></div>
+      </section>
     </div>
 
     <div id="overlay" class="overlay hidden">
       <div class="panel">
         <h1>GAME OVER</h1>
         <p>Coins: <strong id="finalScore">0</strong></p>
-        <p class="hint">Press Space / W / ↑ or tap to restart</p>
+        <button id="restartButton" class="restart-button" type="button">PLAY AGAIN</button>
+        <p class="hint">Tap the button or press Space / W / ↑</p>
       </div>
     </div>
 

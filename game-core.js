@@ -32,5 +32,9 @@
     return dx * dx + dy * dy <= rr * rr;
   }
 
-  return { terrainYAt, circleHitsTerrain, circlesOverlap };
+  function nextHealth(current, change, maximum = 3) {
+    return Math.max(0, Math.min(maximum, current + change));
+  }
+
+  return { terrainYAt, circleHitsTerrain, circlesOverlap, nextHealth };
 });
