@@ -9,6 +9,7 @@
   const startHint = document.getElementById('startHint');
   const restartButton = document.getElementById('restartButton');
   const livesEl = document.getElementById('lives');
+  const reducedMotionQuery = matchMedia('(prefers-reduced-motion: reduce)');
 
   const KEY_SET = new Set(['Space', 'ArrowUp', 'KeyW']);
   const HAZARD_MOTIONS = ['stationary', 'vertical', 'horizontal'];
@@ -22,6 +23,8 @@
     score: 0,
     speed: 220,
     terrain: [],
+    seabedLayers: [],
+    backgroundPlants: [],
     coins: [],
     hazards: [],
     medkits: [],
@@ -36,6 +39,7 @@
     invulnerableFor: 0,
     health: 3,
     maxHealth: 3,
+    reducedMotion: reducedMotionQuery.matches,
     submarine: { x: 0, y: 0, vy: 0, r: 24 },
   };
 
@@ -52,6 +56,7 @@
     state.submarine.x = Math.max(120, state.width * 0.3);
     state.submarine.r = Math.max(18, Math.min(28, state.width * 0.022));
 
+    if (state.started || state.gameOver) refreshBackgroundScene();
     if (!state.started && !state.gameOver) resetWorld(false);
   }
 
@@ -60,6 +65,12 @@
   }
   function rand(min, max) {
     return min + Math.random() * (max - min);
+  }
+
+  function refreshBackgroundScene() {
+    const scene = GameCore.createBackgroundScene(state.width, state.height);
+    state.seabedLayers = scene.seabedLayers;
+    state.backgroundPlants = scene.backgroundPlants;
   }
 
   function resetWorld(resetScore = true) {
@@ -71,6 +82,7 @@
     state.submarine.y = state.height * 0.46;
     state.submarine.vy = 0;
     state.terrain.length = 0;
+    refreshBackgroundScene();
     state.coins.length = 0;
     state.hazards.length = 0;
     state.medkits.length = 0;
@@ -202,6 +214,9 @@
   });
   addEventListener('blur', endInput);
   addEventListener('resize', resize);
+  reducedMotionQuery.addEventListener?.('change', (event) => {
+    state.reducedMotion = event.matches;
+  });
 
   function update(dt) {
     if (!state.started || state.gameOver) return;
@@ -317,22 +332,172 @@
   }
 
   function drawBackground() {
+    const motionTime = GameCore.motionTime(state.time, state.reducedMotion);
     const g = ctx.createLinearGradient(0, 0, 0, state.height);
-    g.addColorStop(0, '#6d9df0');
-    g.addColorStop(1, '#4f83dc');
+    g.addColorStop(0, '#88c8e5');
+    g.addColorStop(0.4, '#367da8');
+    g.addColorStop(1, '#103e69');
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, state.width, state.height);
 
-    ctx.globalAlpha = 0.13;
+    const deepGlow = ctx.createRadialGradient(
+      state.width * 0.5, state.height * 0.05, 0,
+      state.width * 0.5, state.height * 0.05, state.height * 0.9,
+    );
+    deepGlow.addColorStop(0, 'rgba(216, 249, 255, 0.23)');
+    deepGlow.addColorStop(0.55, 'rgba(24, 104, 144, 0.02)');
+    deepGlow.addColorStop(1, 'rgba(3, 29, 65, 0.38)');
+    ctx.fillStyle = deepGlow;
+    ctx.fillRect(0, 0, state.width, state.height);
+
+    drawLightRays(motionTime);
+
+    drawSeabedLayer('far', motionTime);
+    drawKelpLayer('far', motionTime);
+    drawSeabedLayer('mid', motionTime);
+    drawKelpLayer('mid', motionTime);
+
+    ctx.globalAlpha = 0.16;
     ctx.fillStyle = '#ffffff';
     for (let i = 0; i < 7; i += 1) {
-      const x = ((i * 220 - state.time * 16) % (state.width + 260)) - 100;
-      const y = 80 + (i % 4) * 95;
+      const x = ((i * 220 - motionTime * (10 + i * 2)) % (state.width + 260)) - 100;
+      const y = 74 + (i % 4) * 96;
       ctx.beginPath();
       ctx.arc(x, y, 3 + (i % 3) * 2, 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.globalAlpha = 1;
+
+    drawSeabedLayer('near', motionTime);
+    drawKelpLayer('near', motionTime);
+  }
+
+  function drawLightRays(motionTime) {
+    const farLayer = state.seabedLayers.find((item) => item.layer === 'far');
+    if (!farLayer) return;
+
+    const scroll = motionTime * state.speed * farLayer.parallax;
+    const seabedSurface = GameCore.createSeabedSurfacePoints(farLayer, state.width, scroll);
+    const firstPoint = seabedSurface[0];
+    const lastPoint = seabedSurface[seabedSurface.length - 1];
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(firstPoint.x, 0);
+    ctx.lineTo(lastPoint.x, 0);
+    for (let index = seabedSurface.length - 1; index >= 0; index -= 1) {
+      const point = seabedSurface[index];
+      ctx.lineTo(point.x, point.y);
+    }
+    ctx.closePath();
+    ctx.clip();
+
+    ctx.globalAlpha = 0.075;
+    ctx.fillStyle = '#e5fbff';
+    for (let i = 0; i < 5; i += 1) {
+      const startX = ((i * 260 + motionTime * 9) % (state.width + 300)) - 150;
+      ctx.beginPath();
+      ctx.moveTo(startX, 0);
+      ctx.lineTo(startX + state.width * 0.14, 0);
+      ctx.lineTo(startX + state.width * 0.39, state.height);
+      ctx.lineTo(startX + state.width * 0.21, state.height);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawSeabedLayer(layerName, motionTime) {
+    const layer = state.seabedLayers.find((item) => item.layer === layerName);
+    if (!layer) return;
+
+    const palette = {
+      far: { top: '#d4deb7', bottom: '#789480', ridge: '#edf2cd' },
+      mid: { top: '#d8c989', bottom: '#8f7547', ridge: '#f0dfa1' },
+      near: { top: '#e2c97d', bottom: '#8a6238', ridge: '#f4d98d' },
+    }[layerName];
+    const scroll = motionTime * state.speed * layer.parallax;
+    const seabedSurface = GameCore.createSeabedSurfacePoints(layer, state.width, scroll);
+    const firstPoint = seabedSurface[0];
+    const lastPoint = seabedSurface[seabedSurface.length - 1];
+    const topY = Math.max(0, layer.baseY - layer.amplitude * 2);
+
+    ctx.save();
+    ctx.globalAlpha = layer.opacity;
+    const sand = ctx.createLinearGradient(0, topY, 0, state.height);
+    sand.addColorStop(0, palette.top);
+    sand.addColorStop(1, palette.bottom);
+    ctx.fillStyle = sand;
+    ctx.beginPath();
+    ctx.moveTo(firstPoint.x, state.height + 8);
+    for (const point of seabedSurface) ctx.lineTo(point.x, point.y);
+    ctx.lineTo(lastPoint.x, state.height + 8);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.globalAlpha = layer.opacity * 0.82;
+    ctx.strokeStyle = palette.ridge;
+    ctx.lineWidth = Math.max(1.4, state.height * 0.003);
+    ctx.beginPath();
+    ctx.moveTo(firstPoint.x, firstPoint.y);
+    for (let index = 1; index < seabedSurface.length; index += 1) {
+      const point = seabedSurface[index];
+      ctx.lineTo(point.x, point.y);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawKelpLayer(layer, motionTime) {
+    const palette = {
+      far: { color: '#174e6f', shadow: '#0d3855', width: 2.4, alpha: 0.34 },
+      mid: { color: '#196e71', shadow: '#0d4a57', width: 3.8, alpha: 0.53 },
+      near: { color: '#16745d', shadow: '#0b4c45', width: 5.4, alpha: 0.78 },
+    }[layer];
+    const seabedLayer = state.seabedLayers.find((item) => item.layer === layer);
+    if (!seabedLayer) return;
+
+    ctx.save();
+    ctx.globalAlpha = palette.alpha;
+    ctx.lineCap = 'round';
+    for (const plant of state.backgroundPlants) {
+      if (plant.layer !== layer) continue;
+      drawKelpPlant(plant, palette, seabedLayer, motionTime);
+    }
+    ctx.restore();
+  }
+
+  function drawKelpPlant(plant, palette, seabedLayer, motionTime) {
+    const scroll = motionTime * state.speed * plant.parallax;
+    const x = ((plant.x - scroll) % state.width + state.width) % state.width;
+    const baseY = GameCore.seabedYAt(seabedLayer, x + scroll);
+    const sway = Math.sin(motionTime * 1.25 + plant.phase);
+
+    ctx.save();
+    ctx.translate(x, baseY + 4);
+    ctx.strokeStyle = palette.shadow;
+    ctx.lineWidth = palette.width + 2;
+    for (let blade = 0; blade < plant.blades; blade += 1) {
+      const ratio = plant.blades === 1 ? 0 : blade / (plant.blades - 1) - 0.5;
+      const baseX = ratio * plant.height * 0.13;
+      const tipX = baseX + ratio * plant.height * 0.24 + sway * plant.height * 0.13;
+      ctx.beginPath();
+      ctx.moveTo(baseX, 0);
+      ctx.quadraticCurveTo(baseX + sway * plant.height * 0.2, -plant.height * 0.52, tipX, -plant.height);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = palette.color;
+    ctx.lineWidth = palette.width;
+    for (let blade = 0; blade < plant.blades; blade += 1) {
+      const ratio = plant.blades === 1 ? 0 : blade / (plant.blades - 1) - 0.5;
+      const baseX = ratio * plant.height * 0.13;
+      const tipX = baseX + ratio * plant.height * 0.24 + sway * plant.height * 0.13;
+      ctx.beginPath();
+      ctx.moveTo(baseX, 0);
+      ctx.quadraticCurveTo(baseX + sway * plant.height * 0.2, -plant.height * 0.52, tipX, -plant.height);
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   function drawTerrain() {
@@ -343,8 +508,22 @@
     for (let i = 1; i < state.terrain.length; i += 1) ctx.lineTo(state.terrain[i].x, state.terrain[i].y);
     ctx.lineTo(state.terrain[state.terrain.length - 1].x, state.height + 10);
     ctx.closePath();
-    ctx.fillStyle = '#050505';
+    const highestPoint = Math.min(...state.terrain.map((point) => point.y));
+    const sand = ctx.createLinearGradient(0, highestPoint - 6, 0, state.height);
+    sand.addColorStop(0, '#f2d98e');
+    sand.addColorStop(0.38, '#c69a57');
+    sand.addColorStop(1, '#69482d');
+    ctx.fillStyle = sand;
     ctx.fill();
+
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255, 235, 171, 0.78)';
+    ctx.lineWidth = Math.max(2, state.height * 0.004);
+    ctx.beginPath();
+    ctx.moveTo(state.terrain[0].x, state.terrain[0].y);
+    for (let i = 1; i < state.terrain.length; i += 1) ctx.lineTo(state.terrain[i].x, state.terrain[i].y);
+    ctx.stroke();
+    ctx.restore();
   }
 
   function drawCoin(coin) {
