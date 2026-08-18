@@ -149,12 +149,15 @@ body { user-select: none; -webkit-user-select: none; }
 .start-hint.hidden { opacity: 0; }
 
 @media (max-width: 600px) {
-  .hud { gap: 7px; }
-  .hud-card { min-height: 56px; gap: 7px; padding: 8px 10px; border-radius: 11px; }
-  .coin-icon { width: 26px; height: 26px; border-width: 3px; box-shadow: inset 0 0 0 3px #fff36d; }
-  #coinCount { font-size: 27px; }
-  .hud small { font-size: 10px; letter-spacing: 1px; }
-  .lives { font-size: 25px; }
+  .hud { gap: 8px; }
+  .hud-card { min-height: 72px; gap: 9px; padding: 10px 12px; border-radius: 12px; }
+  .coin-icon { width: 32px; height: 32px; border-width: 3px; box-shadow: inset 0 0 0 3px #fff36d; }
+  #coinCount { font-size: 33px; }
+  .hud small { font-size: 11px; letter-spacing: 1.2px; }
+  .lives-card { gap: 7px; }
+  .lives { gap: 4px; font-size: 31px; }
   .panel { padding: 28px 20px; }
   .panel .hint { font-size: 14px; }
+  .restart-button { padding: 16px 22px; font-size: 20px; }
+  .start-hint { padding: 13px 18px; font-size: 15px; }
 }

@@ -11,6 +11,7 @@
   const livesEl = document.getElementById('lives');
 
   const KEY_SET = new Set(['Space', 'ArrowUp', 'KeyW']);
+  const HAZARD_MOTIONS = ['stationary', 'vertical', 'horizontal'];
   const state = {
     width: innerWidth,
     height: innerHeight,
@@ -28,6 +29,7 @@
     terrainTargetY: 0,
     coinDistance: 0,
     hazardDistance: 500,
+    hazardPatternIndex: 0,
     medkitDistance: 1500,
     time: 0,
     damageFlash: 0,
@@ -76,6 +78,7 @@
     state.terrainTargetY = state.terrainCursorY;
     state.coinDistance = 180;
     state.hazardDistance = rand(560, 820);
+    state.hazardPatternIndex = 0;
     state.medkitDistance = rand(1300, 1900);
     state.health = state.maxHealth;
     state.damageFlash = 0;
@@ -121,18 +124,26 @@
   function spawnHazard(x) {
     const squid = Math.random() < 0.46;
     const r = squid ? clamp(state.width * 0.05, 42, 62) : clamp(state.width * 0.04, 32, 48);
-    const movesVertically = Math.random() < 0.42;
-    const verticalRange = movesVertically ? clamp(state.height * 0.075, 28, 65) : 0;
+    const motion = HAZARD_MOTIONS[state.hazardPatternIndex];
+    state.hazardPatternIndex = (state.hazardPatternIndex + 1) % HAZARD_MOTIONS.length;
+    const verticalRange = motion === 'vertical' ? clamp(state.height * 0.075, 28, 65) : 0;
+    const horizontalRange = motion === 'horizontal' ? clamp(state.width * 0.075, 30, 72) : 0;
     const baseY = safeSpawnY(x, r + 82 + verticalRange);
     state.hazards.push({
       x,
+      baseX: x,
       y: baseY,
       baseY,
       r,
+      // Damage follows the tentacles, not the empty area above the creature's head.
+      damageRadius: r * (squid ? 1.35 : 1.2),
+      damageOffsetY: r * (squid ? 0.3 : 0.36),
       type: squid ? 'squid' : 'jellyfish',
+      motion,
       phase: Math.random() * Math.PI * 2,
       verticalRange,
-      verticalSpeed: rand(1.1, 1.8),
+      horizontalRange,
+      motionSpeed: rand(1.1, 1.8),
     });
   }
 
@@ -223,8 +234,10 @@
     for (const p of state.terrain) p.x -= dx;
     for (const c of state.coins) c.x -= dx;
     for (const hazard of state.hazards) {
-      hazard.x -= dx;
-      hazard.y = hazard.baseY + Math.sin(state.time * hazard.verticalSpeed + hazard.phase) * hazard.verticalRange;
+      hazard.baseX -= dx;
+      const motionOffset = Math.sin(state.time * hazard.motionSpeed + hazard.phase);
+      hazard.x = hazard.baseX + (hazard.motion === 'horizontal' ? motionOffset * hazard.horizontalRange : 0);
+      hazard.y = hazard.baseY + (hazard.motion === 'vertical' ? motionOffset * hazard.verticalRange : 0);
     }
     for (const medkit of state.medkits) medkit.x -= dx;
 
@@ -275,10 +288,15 @@
 
     if (!state.invulnerableFor) {
       const hitHazard = state.hazards.find((hazard) =>
-        GameCore.circlesOverlap(subCircle, { ...hazard, r: hazard.r * 0.78 }));
+        GameCore.circlesOverlap(subCircle, {
+          x: hazard.x,
+          y: hazard.y + hazard.damageOffsetY,
+          r: hazard.damageRadius,
+        }));
       if (hitHazard) damageSubmarine();
     }
-    state.hazards = state.hazards.filter((hazard) => hazard.x > -hazard.r * 2);
+    state.hazards = state.hazards.filter((hazard) =>
+      hazard.baseX > -hazard.r * 2 - hazard.horizontalRange);
 
     if (GameCore.circleHitsTerrain(subCircle, state.terrain)) endGame();
   }
@@ -433,15 +451,23 @@
     ctx.lineTo(r * 0.62, -r * 0.9);
     ctx.closePath();
     ctx.fill();
-    ctx.fillStyle = '#fff4d7';
+    ctx.strokeStyle = '#4b0c1f';
+    ctx.lineWidth = Math.max(3, r * 0.1);
     ctx.beginPath();
-    ctx.ellipse(-r * 0.29, -r * 0.25, r * 0.21, r * 0.31, -0.2, 0, Math.PI * 2);
-    ctx.ellipse(r * 0.29, -r * 0.25, r * 0.21, r * 0.31, 0.2, 0, Math.PI * 2);
+    ctx.moveTo(-r * 0.56, -r * 0.58);
+    ctx.lineTo(-r * 0.09, -r * 0.47);
+    ctx.moveTo(r * 0.56, -r * 0.58);
+    ctx.lineTo(r * 0.09, -r * 0.47);
+    ctx.stroke();
+    ctx.fillStyle = '#ffe86a';
+    ctx.beginPath();
+    ctx.ellipse(-r * 0.29, -r * 0.25, r * 0.21, r * 0.28, -0.32, 0, Math.PI * 2);
+    ctx.ellipse(r * 0.29, -r * 0.25, r * 0.21, r * 0.28, 0.32, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = '#261226';
     ctx.beginPath();
-    ctx.arc(-r * 0.24, -r * 0.2, r * 0.1, 0, Math.PI * 2);
-    ctx.arc(r * 0.24, -r * 0.2, r * 0.1, 0, Math.PI * 2);
+    ctx.ellipse(-r * 0.24, -r * 0.2, r * 0.065, r * 0.14, -0.12, 0, Math.PI * 2);
+    ctx.ellipse(r * 0.24, -r * 0.2, r * 0.065, r * 0.14, 0.12, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = '#2d0716';
     ctx.beginPath();
@@ -449,10 +475,11 @@
     ctx.fill();
     ctx.fillStyle = '#fff6d5';
     for (let i = -2; i <= 2; i += 1) {
+      const toothX = i * r * 0.15;
       ctx.beginPath();
-      ctx.moveTo(i * r * 0.13, r * 0.19);
-      ctx.lineTo((i + 0.5) * r * 0.13, r * 0.42);
-      ctx.lineTo((i + 1) * r * 0.13, r * 0.19);
+      ctx.moveTo(toothX - r * 0.065, r * 0.19);
+      ctx.lineTo(toothX, r * 0.42);
+      ctx.lineTo(toothX + r * 0.065, r * 0.19);
       ctx.closePath();
       ctx.fill();
     }
